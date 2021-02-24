@@ -82,27 +82,6 @@ namespace eShopConContainers.WebSPA
                 app.UseDeveloperExceptionPage();
             }
 
-
-            // Here we add Angular default Antiforgery cookie name on first load. https://angular.io/guide/http#security-xsrf-protection
-            // This cookie will be read by Angular app and its value will be sent back to the application as the header configured in .AddAntiforgery()
-            app.Use(next => context =>
-            {
-                string path = context.Request.Path.Value;
-
-                if (
-                    string.Equals(path, "/", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(path, "/index.html", StringComparison.OrdinalIgnoreCase))
-                {
-                    // The request token has to be sent as a JavaScript-readable cookie, 
-                    // and Angular uses it by default.
-                    var tokens = antiforgery.GetAndStoreTokens(context);
-                    context.Response.Cookies.Append("XSRF-TOKEN", tokens.RequestToken,
-                        new CookieOptions() { HttpOnly = false });
-                }
-
-                return next(context);
-            });
-
             //Seed Data
             WebContextSeed.Seed(app, env, loggerFactory);
 
@@ -116,7 +95,13 @@ namespace eShopConContainers.WebSPA
 
             app.UseDefaultFiles();
             app.UseStaticFiles();
-            app.UseSpaStaticFiles();
+
+            // Use the SPA static hosting middleware is the Angular app is already built.
+            var useSpaStaticHosting = Directory.Exists("wwwroot");
+            if (useSpaStaticHosting)
+            {
+                app.UseSpaStaticFiles();
+            }
 
             app.UseRouting();
             app.UseEndpoints(endpoints =>
@@ -134,7 +119,21 @@ namespace eShopConContainers.WebSPA
                 });
             });
 
-            app.UseSpa(spa => {});
+            // Handles all still unnatended (by any other middleware) requests by returning the default page of the SPA (wwwroot/index.html).
+            app.UseSpa(spa =>
+            {
+                // To learn more about options for serving an Angular SPA from ASP.NET Core,
+                // see https://go.microsoft.com/fwlink/?linkid=864501
+
+                // the root of the angular app. (Where the package.json lives)
+                spa.Options.SourcePath = "Client";
+
+                if (!useSpaStaticHosting)
+                {
+                    // use the SpaServices extension method for angular, that will make the application to run "ng serve" for us, when in development.
+                    spa.UseAngularCliServer(npmScript: "start");
+                }
+            });
         }
 
         private void RegisterAppInsights(IServiceCollection services)
